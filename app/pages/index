@@ -1,11 +1,8 @@
 <script setup lang="ts">
 import { useDebounceFn } from '@vueuse/core'
-// import {useGeolocation} from './composables/useGeolocation'
-// import { useGeolocation } from '@vueuse/core'
-const jobsStore = useJobsStore()
-const { lat, lng, loading, initLocation } = useGeolocation()
 
-const showMap = ref(false)
+const jobsStore = useJobsStore()
+const { state: location, initLocation } = useGeolocation()
 
 onMounted(async () => {
   await jobsStore.fetchJobs(1)
@@ -26,12 +23,6 @@ const remoteLabel = computed(() => {
   if (jobsStore.filters.remote === true) return 'Remote'
   return 'On-site'
 })
-
-async function handleLocationClick() {
-  await initLocation()
-  showMap.value = true
-    console.log(location)
-}
 </script>
 
 <template>
@@ -43,6 +34,7 @@ async function handleLocationClick() {
         <h1 class="text-xl font-semibold text-gray-900 shrink-0">Job Finder</h1>
 
         <div class="flex items-center gap-3 flex-1 max-w-2xl">
+          <!-- Search -->
           <input
             type="text"
             placeholder="Search jobs or companies..."
@@ -50,6 +42,7 @@ async function handleLocationClick() {
             @input="handleSearch(($event.target as HTMLInputElement).value)"
           />
 
+          <!-- Remote filter -->
           <button
             class="px-4 py-2 rounded-lg border text-sm font-medium transition-colors"
             :class="jobsStore.filters.remote === null
@@ -60,54 +53,34 @@ async function handleLocationClick() {
             {{ remoteLabel }}
           </button>
 
+          <!-- Location -->
           <button
             class="px-4 py-2 rounded-lg border text-sm font-medium transition-colors"
-            :class="lat
-           ? 'border-green-500 text-green-600 bg-green-50'
-             : 'border-gray-200 text-gray-600 hover:bg-gray-50'"
-            @click="handleLocationClick"
-          >
-           {{ loading ? 'Locating...' : lat ? '📍 Located' : 'Use location' }}
-          </button>
-
-          <button
-           v-if="lat"
-            class="px-4 py-2 rounded-lg border text-sm font-medium transition-colors"
-            :class="showMap
-              ? 'border-blue-500 text-blue-600 bg-blue-50'
+            :class="location.lat
+              ? 'border-green-500 text-green-600 bg-green-50'
               : 'border-gray-200 text-gray-600 hover:bg-gray-50'"
-            @click="showMap = !showMap"
+            @click="initLocation"
           >
-            {{ showMap ? 'Hide map' : 'Show map' }}
+            {{ location.loading ? 'Locating...' : location.lat ? 'Located' : 'Use location' }}
           </button>
         </div>
       </div>
     </header>
 
-    <!-- Map -->
-   <div v-show="showMap && lat" class="max-w-6xl mx-auto px-4 pt-6 h-80">
-  <ClientOnly>
-    <MapView
-      v-if="lat && lng"
-      class=" relative rounded-xl border border-gray-200 shadow-sm"
-      :jobs="jobsStore.filteredJobs"
-      :user-lat="lat"
-      :user-lng="lng"
-    />
-  </ClientOnly>
-</div>
-
     <!-- Main -->
     <main class="max-w-6xl mx-auto px-4 py-6">
 
+      <!-- Stats -->
       <p class="text-sm text-gray-500 mb-4">
         {{ jobsStore.filteredJobs.length }} jobs found
       </p>
 
+      <!-- Error -->
       <div v-if="jobsStore.error" class="mb-4 p-4 bg-red-50 text-red-600 rounded-lg text-sm">
         {{ jobsStore.error }}
       </div>
 
+      <!-- Job list -->
       <div class="grid gap-3">
         <JobCard
           v-for="job in jobsStore.filteredJobs"
@@ -116,14 +89,16 @@ async function handleLocationClick() {
         />
       </div>
 
+      <!-- Loading skeleton -->
       <div v-if="jobsStore.loading" class="grid gap-3 mt-3">
         <div
           v-for="n in 5"
           :key="n"
           class="h-28 bg-white rounded-xl border border-gray-100 animate-pulse"
-        />
+        ></div>
       </div>
 
+      <!-- Load more -->
       <div class="mt-8 flex justify-center">
         <button
           v-if="jobsStore.hasMore && !jobsStore.loading"

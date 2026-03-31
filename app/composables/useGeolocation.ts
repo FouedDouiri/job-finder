@@ -1,22 +1,29 @@
-export function useGeolocation() {
-  const locationStore = useLocationStore()
-  const jobsStore = useJobsStore()
+export const useGeolocation = () => {
+  const lat = ref<number | null>(null)
+  const lng = ref<number | null>(null)
+  const loading = ref(false)
+  const error = ref<string | null>(null)
 
-  const nearbyJobs = computed(() => {
-    if (!locationStore.state.lat || !locationStore.state.lng) {
-      return []
+  function initLocation() {
+    if (!navigator.geolocation) {
+      error.value = 'Not supported'
+      return
     }
 
-    return jobsStore.filteredJobs.filter(job => job.location).slice(0, 20)
-  })
+    loading.value = true
 
-  async function initLocation() {
-    await locationStore.detectLocation()
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        lat.value = pos.coords.latitude
+        lng.value = pos.coords.longitude
+        loading.value = false
+      },
+      (err) => {
+        error.value = err.message
+        loading.value = false
+      }
+    )
   }
 
-  return {
-    state: locationStore.state,
-    nearbyJobs,
-    initLocation,
-  }
+  return { lat, lng, loading, error, initLocation }
 }

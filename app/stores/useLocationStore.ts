@@ -1,6 +1,8 @@
 import type { LocationState } from '~/types'
 
 const geocodeCache = new Map<string, { lat: number; lng: number }>()
+const geocodeQueue: string[] = []
+let isProcessingQueue = false
 
 export const useLocationStore = defineStore('location', () => {
   const state = ref<LocationState>({
@@ -11,20 +13,46 @@ export const useLocationStore = defineStore('location', () => {
     error: null,
   })
 
+  async function processQueue() {
+    if (isProcessingQueue) return
+    isProcessingQueue = true
+
+    while (geocodeQueue.length > 0) {
+      const city = geocodeQueue.shift()!
+      if (geocodeCache.has(city)) continue
+
+      try {
+        const result = await $fetch<{ lat: number; lng: number } | null>('/api/geocode', {
+          params: { city },
+        })
+        if (result) geocodeCache.set(city, result)
+      } catch {
+        // skip silently
+      }
+
+      // Nominatim rate limit: 1 req/sec
+      await new Promise(resolve => setTimeout(resolve, 1100))
+    }
+
+    isProcessingQueue = false
+  }
+
+  async function geocodeCities(cities: string[]): Promise<void> {
+    const unique = [...new Set(cities)].filter(c => c && !geocodeCache.has(c))
+    if (!unique.length) return
+    geocodeQueue.push(...unique)
+    processQueue() // intentionally not awaited — runs in background
+  }
+
   async function geocodeCity(city: string): Promise<{ lat: number; lng: number } | null> {
     if (geocodeCache.has(city)) return geocodeCache.get(city)!
 
     try {
-      const results = await $fetch<any[]>('https://nominatim.openstreetmap.org/search', {
-        params: { q: city, format: 'json', limit: 1 },
-        headers: { 'Accept-Language': 'en' },
+      const result = await $fetch<{ lat: number; lng: number } | null>('/api/geocode', {
+        params: { city },
       })
-
-      if (!results.length) return null
-
-      const coords = { lat: parseFloat(results[0].lat), lng: parseFloat(results[0].lon) }
-      geocodeCache.set(city, coords)
-      return coords
+      if (result) geocodeCache.set(city, result)
+      return result
     } catch {
       return null
     }
@@ -42,12 +70,22 @@ export const useLocationStore = defineStore('location', () => {
         state.value.lng = position.coords.longitude
         state.value.loading = false
       },
-      err => {
+      () => {
         state.value.error = 'Location access denied.'
         state.value.loading = false
       }
     )
   }
 
-  return { state, detectLocation, geocodeCity }
+  function getCached(city: string) {
+    return geocodeCache.get(city) ?? null
+  }
+
+  return {
+    state,
+    detectLocation,
+    geocodeCity,
+    geocodeCities,
+    getCached,
+  }
 })
